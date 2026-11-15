@@ -2,14 +2,21 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Stopwatch</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="A responsive precision stopwatch with start, pause, reset, and lap tracking." />
+  <title>Precision Stopwatch</title>
   <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       background: radial-gradient(circle at top, #dbeafe, #f0f4f8);
-      height: 100vh;
+      min-height: 100vh;
+      min-height: 100svh;
       margin: 0;
+      padding: 24px 16px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -20,22 +27,23 @@
       border-radius: 20px;
       box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
       padding: 40px;
-      max-width: 400px;
-      width: 90%;
+      max-width: 440px;
+      width: 100%;
       text-align: center;
       animation: fadeIn 1s ease;
     }
 
     h1 {
       color: #2c3e50;
-      margin-bottom: 20px;
+      margin: 0 0 20px;
     }
 
     #display {
-      font-size: 3rem;
+      font-size: clamp(2rem, 8vw, 3rem);
       color: #1f2937;
       margin: 20px 0;
-      animation: pulse 2s infinite ease-in-out;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
 
     .buttons {
@@ -49,10 +57,11 @@
     button {
       padding: 10px 18px;
       font-size: 1rem;
+      font-weight: 600;
       border: none;
       border-radius: 10px;
       cursor: pointer;
-      transition: all 0.3s ease;
+      transition: background-color 0.2s ease, transform 0.2s ease;
       background-color: #6366f1;
       color: white;
       box-shadow: 0 4px 10px rgba(99, 102, 241, 0.3);
@@ -60,7 +69,12 @@
 
     button:hover {
       background-color: #4f46e5;
-      transform: scale(1.05);
+      transform: translateY(-2px);
+    }
+
+    button:focus-visible {
+      outline: 3px solid #111827;
+      outline-offset: 3px;
     }
 
     #reset {
@@ -97,29 +111,35 @@
     .laps h2 {
       margin-bottom: 10px;
       color: #374151;
+      font-size: 1.2rem;
     }
 
     #lapTimes {
       padding: 0;
+      margin: 0;
       list-style: none;
     }
 
     #lapTimes li {
-      padding: 5px 10px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 10px;
       background-color: #f3f4f6;
       border-radius: 6px;
       margin-bottom: 6px;
+      font-variant-numeric: tabular-nums;
       animation: fadeInLap 0.3s ease-in;
+    }
+
+    .lap-number {
+      color: #4b5563;
+      font-weight: 600;
     }
 
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(20px); }
       to { opacity: 1; transform: translateY(0); }
-    }
-
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.03); }
     }
 
     @keyframes slideUp {
@@ -131,67 +151,119 @@
       from { opacity: 0; transform: scale(0.95); }
       to { opacity: 1; transform: scale(1); }
     }
+
+    @media (max-width: 420px) {
+      .container {
+        padding: 28px 18px;
+      }
+
+      button {
+        flex: 1 1 calc(50% - 10px);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Stopwatch</h1>
-    <div id="display">00:00:00.000</div>
-    <div class="buttons">
-      <button id="start">Start</button>
-      <button id="pause">Pause</button>
-      <button id="reset">Reset</button>
-      <button id="lap">Lap</button>
+  <main class="container">
+    <h1>Precision Stopwatch</h1>
+    <div id="display" role="timer" aria-label="Elapsed time" aria-live="off">00:00:00.000</div>
+
+    <div class="buttons" aria-label="Stopwatch controls">
+      <button id="start" type="button">Start</button>
+      <button id="pause" type="button">Pause</button>
+      <button id="reset" type="button">Reset</button>
+      <button id="lap" type="button">Lap</button>
     </div>
-    <div class="laps">
-      <h2>Lap Times</h2>
-      <ul id="lapTimes"></ul>
-    </div>
-  </div>
+
+    <section class="laps" aria-labelledby="laps-heading">
+      <h2 id="laps-heading">Lap Times</h2>
+      <ol id="lapTimes" aria-label="Recorded lap times"></ol>
+    </section>
+  </main>
 
   <script>
     let startTime = 0;
     let elapsedTime = 0;
-    let timerInterval;
+    let timerInterval = null;
     let isRunning = false;
+    let lapCount = 0;
 
     const display = document.getElementById("display");
     const lapList = document.getElementById("lapTimes");
 
-    function timeToString(ms) {
-      const date = new Date(ms);
-      return date.toISOString().slice(11, 23);
+    function timeToString(milliseconds) {
+      const totalMilliseconds = Math.floor(milliseconds);
+      const hours = Math.floor(totalMilliseconds / 3600000);
+      const minutes = Math.floor((totalMilliseconds % 3600000) / 60000);
+      const seconds = Math.floor((totalMilliseconds % 60000) / 1000);
+      const ms = totalMilliseconds % 1000;
+
+      return [
+        String(hours).padStart(2, "0"),
+        String(minutes).padStart(2, "0"),
+        String(seconds).padStart(2, "0")
+      ].join(":") + "." + String(ms).padStart(3, "0");
+    }
+
+    function updateDisplay() {
+      elapsedTime = performance.now() - startTime;
+      display.textContent = timeToString(elapsedTime);
     }
 
     function startTimer() {
       if (isRunning) return;
+
       isRunning = true;
-      startTime = Date.now() - elapsedTime;
-      timerInterval = setInterval(() => {
-        elapsedTime = Date.now() - startTime;
-        display.textContent = timeToString(elapsedTime);
-      }, 10);
+      startTime = performance.now() - elapsedTime;
+      updateDisplay();
+      timerInterval = setInterval(updateDisplay, 10);
     }
 
     function pauseTimer() {
+      if (!isRunning) return;
+
+      updateDisplay();
       isRunning = false;
       clearInterval(timerInterval);
+      timerInterval = null;
     }
 
     function resetTimer() {
       isRunning = false;
       clearInterval(timerInterval);
+      timerInterval = null;
       startTime = 0;
       elapsedTime = 0;
+      lapCount = 0;
       display.textContent = "00:00:00.000";
-      lapList.innerHTML = "";
+      lapList.replaceChildren();
     }
 
     function recordLap() {
       if (!isRunning) return;
-      const li = document.createElement("li");
-      li.textContent = timeToString(elapsedTime);
-      lapList.appendChild(li);
+
+      updateDisplay();
+      lapCount += 1;
+
+      const item = document.createElement("li");
+      const number = document.createElement("span");
+      const time = document.createElement("span");
+
+      number.className = "lap-number";
+      number.textContent = "Lap " + lapCount;
+      time.textContent = timeToString(elapsedTime);
+
+      item.append(number, time);
+      lapList.appendChild(item);
     }
 
     document.getElementById("start").addEventListener("click", startTimer);
